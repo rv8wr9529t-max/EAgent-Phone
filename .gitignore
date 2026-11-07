@@ -1,0 +1,10 @@
+# 运行时产物
+缓存/
+工作目录/
+*.log
+*.tmp
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+desktop.ini
