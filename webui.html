@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>EAgent 手机遥控</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:#12151c; color:#e8eaf0; display:flex; flex-direction:column; height:100vh; height:100dvh; }
+  header { padding:10px 14px; background:#1b2130; display:flex; align-items:center; gap:8px; border-bottom:1px solid #2a3247; position:sticky; top:0; z-index:5; }
+  header .title { font-size:16px; font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #status { font-size:12px; padding:3px 9px; border-radius:99px; background:#2a3247; color:#9fb0cc; white-space:nowrap; }
+  #status.busy { background:#2d3f2b; color:#9fe08c; }
+  #status.confirm { background:#4a2f2f; color:#ffb08a; }
+  #log { flex:1; overflow-y:auto; padding:12px 10px 8px; display:flex; flex-direction:column; gap:8px; }
+  .bubble { max-width:88%; padding:8px 11px; border-radius:12px; font-size:14px; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+  .who { font-size:11px; opacity:.55; margin-bottom:2px; }
+  .user { align-self:flex-end; background:#2b5fd9; color:#fff; border-bottom-right-radius:4px; }
+  .ai { align-self:flex-start; background:#232b3f; border-bottom-left-radius:4px; }
+  .tool { align-self:flex-start; background:#33301f; color:#e6d99a; border-bottom-left-radius:4px; font-size:13px; }
+  .sys { align-self:center; background:transparent; color:#7b87a3; font-size:12px; padding:2px 8px; }
+  .bubble img { max-width:100%; border-radius:8px; display:block; margin-top:4px; }
+  footer { background:#1b2130; border-top:1px solid #2a3247; padding:8px; }
+  #inputRow { display:flex; gap:6px; align-items:flex-end; }
+  #cmd { flex:1; resize:none; min-height:40px; max-height:110px; border-radius:10px; border:1px solid #2a3247; background:#12151c; color:#e8eaf0; padding:9px 10px; font-size:14px; outline:none; }
+  #sendBtn { background:#2b5fd9; color:#fff; border:none; border-radius:10px; padding:0 16px; height:40px; font-size:15px; font-weight:600; }
+  #sendBtn:disabled { opacity:.4; }
+  #toolRow { display:flex; gap:6px; margin-top:7px; }
+  #toolRow button { flex:1; background:#232b3f; color:#c6d0e6; border:none; border-radius:8px; padding:7px 0; font-size:12.5px; }
+  #toolRow button:active { background:#2e3a56; }
+  #toolRow .danger { color:#ff9d8a; }
+  .overlay { position:fixed; inset:0; background:rgba(8,10,15,.96); z-index:20; display:none; flex-direction:column; }
+  .overlay.open { display:flex; }
+  .overlay .obar { display:flex; gap:8px; padding:10px; align-items:center; background:#1b2130; }
+  .overlay .obar .ot { flex:1; font-size:14px; color:#c6d0e6; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .overlay button { background:#232b3f; color:#e8eaf0; border:none; border-radius:8px; padding:7px 12px; font-size:13px; }
+  #shotImg { flex:1; margin:auto; max-width:100%; max-height:100%; object-fit:contain; padding:6px; }
+  #fileList { flex:1; overflow-y:auto; padding:8px; }
+  .fitem { display:flex; align-items:center; gap:8px; padding:11px 8px; border-bottom:1px solid #23293a; font-size:14px; }
+  .fitem .fname { flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .fitem .fsize { font-size:11px; color:#7b87a3; }
+  .fitem a { color:#8fb3ff; text-decoration:none; }
+  #confirmBox { position:fixed; inset:0; background:rgba(8,10,15,.85); z-index:30; display:none; align-items:center; justify-content:center; padding:18px; }
+  #confirmBox.open { display:flex; }
+  #confirmCard { background:#1e2536; border-radius:14px; padding:16px; width:100%; max-width:520px; max-height:80vh; display:flex; flex-direction:column; gap:10px; }
+  #confirmCard h3 { margin:0; font-size:15px; color:#ffb08a; }
+  #confirmPreview { background:#12151c; border-radius:8px; padding:10px; font-size:12.5px; overflow-y:auto; flex:1; white-space:pre-wrap; word-break:break-word; color:#cfd7ea; }
+  #confirmCard .row { display:flex; gap:10px; }
+  #allowBtn { flex:1; background:#2d7a3f; color:#fff; border:none; border-radius:10px; padding:12px; font-size:15px; font-weight:600; }
+  #denyBtn { flex:1; background:#7a2d2d; color:#fff; border:none; border-radius:10px; padding:12px; font-size:15px; font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <div class="title">🤖 EAgent 手机遥控</div>
+  <div id="status">连接中…</div>
+</header>
+<div id="log"></div>
+<footer>
+  <div id="inputRow">
+    <textarea id="cmd" rows="1" placeholder="给电脑下命令，例如：截个图看看 / 把桌面上的1.docx总结下"></textarea>
+    <button id="sendBtn">发送</button>
+  </div>
+  <div id="toolRow">
+    <button id="shotBtn">📷 看屏幕</button>
+    <button id="fileBtn">📁 工作目录</button>
+    <button id="resetBtn">♻️ 新会话</button>
+    <button id="quitBtn" class="danger">⏻ 停止服务</button>
+  </div>
+</footer>
+
+<div id="shotOverlay" class="overlay">
+  <div class="obar"><div class="ot">实时屏幕</div><button id="shotRefresh">刷新</button><button id="shotClose">关闭</button></div>
+  <img id="shotImg" alt="">
+</div>
+
+<div id="fileOverlay" class="overlay">
+  <div class="obar"><button id="fileUp">⬅ 上级</button><div class="ot" id="filePath">/</div><button id="fileClose">关闭</button></div>
+  <div id="fileList"></div>
+</div>
+
+<div id="confirmBox">
+  <div id="confirmCard">
+    <h3>⚠️ AI 请求执行以下操作</h3>
+    <div id="confirmPreview"></div>
+    <div class="row">
+      <button id="allowBtn">✅ 允许执行</button>
+      <button id="denyBtn">🚫 拒绝</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var KEY = new URLSearchParams(location.search).get('key') || sessionStorage.getItem('eagent_key') || '';
+if (!KEY) { KEY = prompt('请输入访问密钥 key（电脑 console 里有完整链接）:') || ''; }
+sessionStorage.setItem('eagent_key', KEY);
+var since = 0, pendingId = null, pollTimer = null;
+var logEl = document.getElementById('log'), statusEl = document.getElementById('status');
+var cmdEl = document.getElementById('cmd'), sendBtn = document.getElementById('sendBtn');
+
+function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function api(url, opt){ return fetch(url + (url.indexOf('?')>=0?'&':'?') + 'key=' + encodeURIComponent(KEY), opt).then(function(r){return r.json();}); }
+
+function addBubble(ev){
+  var div = document.createElement('div');
+  div.className = 'bubble ' + ev.who;
+  var label = {user:'我', ai:'AI', tool:'工具', sys:'系统'}[ev.who] || ev.who;
+  div.innerHTML = '<div class="who">' + label + ' · ' + ev.t + '</div>' + esc(ev.text);
+  logEl.appendChild(div);
+  while (logEl.children.length > 300) logEl.removeChild(logEl.firstChild);
+  var nearBottom = (logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight) < 120;
+  if (nearBottom || ev.who !== 'ai') logEl.scrollTop = logEl.scrollHeight;
+}
+
+function poll(){
+  api('/api/events?since=' + since).then(function(d){
+    if (d.ok === false) { statusEl.textContent = '密钥错误'; statusEl.className=''; return; }
+    d.events.forEach(addBubble);
+    since = d.next;
+    var pc = d.pendingConfirm;
+    if (pc) {
+      pendingId = pc.id;
+      statusEl.textContent = '⚠️ 等待你确认';
+      statusEl.className = 'confirm';
+      document.getElementById('confirmPreview').textContent = '【' + pc.tool + '】\n' + pc.preview;
+      document.getElementById('confirmBox').classList.add('open');
+    } else {
+      document.getElementById('confirmBox').classList.remove('open');
+      statusEl.textContent = d.busy ? ('运行中 · ' + d.status) : ('空闲' + (d.queued>0 ? ' · 排队'+d.queued : ''));
+      statusEl.className = d.busy ? 'busy' : '';
+    }
+  }).catch(function(){
+    statusEl.textContent = '连接失败…';
+    statusEl.className = '';
+  });
+}
+pollTimer = setInterval(poll, 1500); poll();
+
+function send(){
+  var t = cmdEl.value.trim();
+  if (!t) return;
+  sendBtn.disabled = true;
+  api('/api/cmd', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'text=' + encodeURIComponent(t) })
+    .then(function(){ cmdEl.value=''; autosize(); poll(); })
+    .finally(function(){ sendBtn.disabled = false; cmdEl.focus(); });
+}
+sendBtn.addEventListener('click', send);
+cmdEl.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+function autosize(){ cmdEl.style.height='auto'; cmdEl.style.height = Math.min(110, cmdEl.scrollHeight) + 'px'; }
+cmdEl.addEventListener('input', autosize);
+
+document.getElementById('allowBtn').addEventListener('click', function(){ api('/api/confirm', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'allow=1'}).then(poll); });
+document.getElementById('denyBtn').addEventListener('click', function(){ api('/api/confirm', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'allow=0'}).then(poll); });
+
+var shotOverlay = document.getElementById('shotOverlay'), shotImg = document.getElementById('shotImg');
+function loadShot(){ shotImg.src = '/shot.jpg?key=' + encodeURIComponent(KEY) + '&t=' + Date.now(); }
+document.getElementById('shotBtn').addEventListener('click', function(){ shotOverlay.classList.add('open'); loadShot(); });
+document.getElementById('shotRefresh').addEventListener('click', loadShot);
+document.getElementById('shotClose').addEventListener('click', function(){ shotOverlay.classList.remove('open'); });
+
+var fileOverlay = document.getElementById('fileOverlay'), fileList = document.getElementById('fileList'), filePathEl = document.getElementById('filePath');
+var curPath = '';
+function fmtSize(n){ if(n<1024) return n+'B'; if(n<1048576) return (n/1024).toFixed(1)+'KB'; if(n<1073741824) return (n/1048576).toFixed(1)+'MB'; return (n/1073741824).toFixed(2)+'GB'; }
+function loadFiles(p){
+  api('/api/files?p=' + encodeURIComponent(p)).then(function(d){
+    if (!d.ok) { fileList.innerHTML = '<div class="fitem">无法读取</div>'; return; }
+    curPath = d.path; filePathEl.textContent = '/' + d.path;
+    fileList.innerHTML = '';
+    d.items.sort(function(a,b){ return (b.dir - a.dir) || a.name.localeCompare(b.name, 'zh'); });
+    d.items.forEach(function(it){
+      var row = document.createElement('div'); row.className = 'fitem';
+      var icon = it.dir ? '📁' : '📄';
+      var size = it.dir ? '' : fmtSize(it.size);
+      var nameHtml;
+      if (it.dir) nameHtml = '<span class="fname">' + icon + ' ' + esc(it.name) + '</span>';
+      else nameHtml = '<span class="fname">' + icon + ' <a href="/dl?p=' + encodeURIComponent(curPath ? curPath + '/' + it.name : it.name) + '&key=' + encodeURIComponent(KEY) + '">' + esc(it.name) + '</a></span>';
+      row.innerHTML = nameHtml + '<span class="fsize">' + size + '<br>' + it.time + '</span>';
+      if (it.dir) row.addEventListener('click', function(){ loadFiles(curPath ? curPath + '/' + it.name : it.name); });
+      fileList.appendChild(row);
+    });
+    if (!d.items.length) fileList.innerHTML = '<div class="fitem">空目录</div>';
+  });
+}
+document.getElementById('fileBtn').addEventListener('click', function(){ fileOverlay.classList.add('open'); loadFiles(curPath); });
+document.getElementById('fileUp').addEventListener('click', function(){ if(!curPath) return; var p = curPath.replace(/\\/g,'/').split('/'); p.pop(); loadFiles(p.join('/')); });
+document.getElementById('fileClose').addEventListener('click', function(){ fileOverlay.classList.remove('open'); });
+
+document.getElementById('resetBtn').addEventListener('click', function(){ if (confirm('开启新会话？当前聊天上下文将清空。')) api('/api/reset',{method:'POST'}).then(poll); });
+document.getElementById('quitBtn').addEventListener('click', function(){ if (confirm('停止电脑上的 EAgent 服务？(会同时关闭受控浏览器)')) api('/api/quit',{method:'POST'}).then(function(){ document.body.innerHTML='<div style="padding:40px;text-align:center;color:#9fb0cc">服务已停止，可以关掉本页面了。</div>'; clearInterval(pollTimer); }); });
+</script>
+</body>
+</html>
